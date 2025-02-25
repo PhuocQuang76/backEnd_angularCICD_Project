@@ -1,37 +1,32 @@
-# Use an official Ubuntu as a base image
-FROM ubuntu:latest
+# Define the build stage using Maven as base image
+FROM maven:3.8.7-eclipse-temurin-17 AS build
 
-# Install necessary tools (curl, gnupg, apt-transport-https, etc.)
-RUN apt-get update \
-    && apt-get install -y curl gnupg apt-transport-https
+# Set the working directory inside the container
+WORKDIR /app
 
-# Install OpenJDK 17
-RUN apt-get install -y openjdk-17-jdk
+# Copy the pom.xml file into the Docker image before running mvn dependency:go-offline to download project dependencies
+COPY pom.xml .
 
-# Switch to the root user to install Maven
-USER root
+# Run mvn dependency:go-offline command to download project dependencies offline
+RUN mvn dependency:go-offline -B
 
-# Install Maven
-RUN apt-get update && apt-get install -y maven
+# Copy the source code into the container
+COPY src ./src
 
-# Set JAVA_HOME and M2_HOME environment variables
-ENV JAVA_HOME /usr/lib/jvm/java-17-openjdk-amd64
-ENV M2_HOME /usr/share/maven
+# Run mvn clean package to clean and package the application
+RUN mvn clean install
 
-# Download Jenkins repository key and add it to the keyring
-RUN curl -fsSL https://pkg.jenkins.io/debian/jenkins.io-2023.key | gpg --dearmor -o /usr/share/keyrings/jenkins-keyring.gpg
+# Define the final stage using OpenJDK as base image
+FROM openjdk:17-jdk
 
-# Add Jenkins repository to the sources list
-RUN echo "deb [signed-by=/usr/share/keyrings/jenkins-keyring.gpg] https://pkg.jenkins.io/debian binary/" > /etc/apt/sources.list.d/jenkins.list
+# Set the working directory inside the container
+WORKDIR /app
 
-# Update package list to include the Jenkins repository
-RUN apt-get update
+# Copy the built JAR file from the build stage into the final image
+COPY --from=build /app/target/backend_angularCICD-0.0.1-SNAPSHOT /app/backend_angularCICD-0.0.1-SNAPSHOT
 
-# Install Jenkins
-RUN apt-get install -y jenkins
+# Expose port 8080 for the application
+EXPOSE 8080
 
-# Expose Jenkins port (9091) to the host
-EXPOSE 9091
-
-# Start Jenkins service
-CMD java -jar /usr/share/jenkins/jenkins.war
+# Define the command to run the application when the container starts
+CMD ["java", "-jar", "backend_angularCICD-0.0.1-SNAPSHOT.jar"]
